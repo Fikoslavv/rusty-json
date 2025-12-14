@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "rusty-json",
+]
+
+resolver = "3"
