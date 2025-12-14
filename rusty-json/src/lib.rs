@@ -15,3 +15,6 @@ pub fn from_json<T>(json: &str) -> Result<T, &'static str> where T : TryFrom<Jso
 pub fn into_json<T>(obj: T) -> String where T : Into<JsonObject> { obj.into().into_json() }
 
 pub fn to_json<'a, T>(obj: &'a T) -> String where &'a T : Into<JsonObject> { obj.into().into_json() }
+
+#[cfg(feature = "derive")]
+pub use rusty_json_derive::{ JsonSerialize, IntoJson, ToJson };
