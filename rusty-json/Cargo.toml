@@ -2,9 +2,3 @@
 name = "rusty-json"
 version = "0.1.0"
 edition = "2024"
-
-[dependencies]
-rusty-json-derive = { path = "../rusty-json-derive", optional = true }
-
-[features]
-derive = [ "rusty-json-derive" ]
