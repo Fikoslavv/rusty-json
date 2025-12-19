@@ -2,9 +2,9 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use quote::quote;
 
-use crate::{TokenLayer, field_into_token_layers};
+use crate::TokenLayer;
 
-pub(crate) fn into_json_macro_impl<'a>(type_name: &syn::Ident, fields: impl Iterator<Item = &'a syn::Field>) -> proc_macro2::TokenStream
+pub(crate) fn into_json_macro_impl<'a>(type_name: &syn::Ident, fields: impl Iterator<Item = (&'a syn::Ident, Rc<RefCell<TokenLayer>>)>) -> proc_macro2::TokenStream
 {
     let fields = fields_into_token_stream_iter(fields, false);
 
@@ -24,7 +24,7 @@ pub(crate) fn into_json_macro_impl<'a>(type_name: &syn::Ident, fields: impl Iter
     }
 }
 
-pub(crate) fn to_json_macro_impl<'a>(type_name: &syn::Ident, fields: impl Iterator<Item = &'a syn::Field>) -> proc_macro2::TokenStream
+pub(crate) fn to_json_macro_impl<'a>(type_name: &syn::Ident, fields: impl Iterator<Item = (&'a syn::Ident, Rc<RefCell<TokenLayer>>)>) -> proc_macro2::TokenStream
 {
     let fields = fields_into_token_stream_iter(fields, true);
 
@@ -44,13 +44,10 @@ pub(crate) fn to_json_macro_impl<'a>(type_name: &syn::Ident, fields: impl Iterat
     }
 }
 
-fn fields_into_token_stream_iter<'a>(fields: impl Iterator<Item = &'a syn::Field>, should_clone_items: bool) -> impl Iterator<Item = proc_macro2::TokenStream>
+fn fields_into_token_stream_iter<'a>(fields: impl Iterator<Item = (&'a syn::Ident, Rc<RefCell<TokenLayer>>)>, should_clone_items: bool) -> impl Iterator<Item = proc_macro2::TokenStream>
 {
     fields.into_iter()
-    .map(|f| (f.ident.as_ref().unwrap().to_string(), f))
-    .map(|(ident, f)| (ident, field_into_token_layers(f)))
-    .map(|(ident, t)| (ident, Rc::new(RefCell::new(t))))
-    .map(move |(ident, t)| (ident, token_layer_into_token_stream_recursive(t, None, should_clone_items)))
+    .map(move |(ident, t)| (ident.to_string(), token_layer_into_token_stream_recursive(t, None, should_clone_items)))
     .map(|(ident, json)| quote!(#ident.to_string(), #json))
 }
 
@@ -58,9 +55,9 @@ fn token_layer_into_token_stream_recursive(layer: Rc<RefCell<TokenLayer>>, ident
 {
     match &*layer.borrow()
     {
-        TokenLayer::Item =>
+        TokenLayer::Item { typ: _ } =>
         {
-            let ident = ident.expect("token_layer_into_token_stream_recursive(…, ident) was supposed to be Some(…) while it was None !");
+            let ident = ident.expect("token_layer_into_token_stream_recursive(…, ident, …) was supposed to be Some(…) while it was None !");
             if require_cloning_items { quote!(#ident.clone().into()) } else { quote!(#ident.into()) }
         },
         TokenLayer::Ident { ident, next } => token_layer_into_token_stream_recursive(next.clone(), Some(quote!(self.#ident)), require_cloning_items),
@@ -85,7 +82,7 @@ fn token_layer_into_token_stream_recursive(layer: Rc<RefCell<TokenLayer>>, ident
             let ident_item = quote!(item);
             let tokens = match &*typ.borrow()
             {
-                TokenLayer::Item => quote!(#ident_item.into()),
+                TokenLayer::Item { typ: _ } => quote!(#ident_item.into()),
                 TokenLayer::Tuple { items: _, size: _ } => token_layer_into_token_stream_recursive(typ.clone(), Some(ident_item), require_cloning_items),
                 TokenLayer::Array { typ: _ } => token_layer_into_token_stream_recursive(typ.clone(), Some(ident_item), require_cloning_items),
                 _ => panic!("Unexpected token found in an array !"),

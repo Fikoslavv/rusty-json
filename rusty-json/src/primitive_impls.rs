@@ -10,12 +10,24 @@ macro_rules! impl_deserialize_for_primitive
 
             fn try_from(json: JsonObject) -> Result<Self, Self::Error>
             {
-                println!("This is a string version of the macro !");
-
                 match json
                 {
                     JsonObject::Value { value } => Ok(value),
-                    obj => return Err(format!("Cannot deserialize {} from `{}`", stringify!($typ), obj)),
+                    obj => return Err(format!("Cannot deserialize String from `{}`", obj)),
+                }
+            }
+        }
+
+        impl TryFrom<&JsonObject> for String
+        {
+            type Error = String;
+
+            fn try_from(json: &JsonObject) -> Result<Self, Self::Error>
+            {
+                match json
+                {
+                    JsonObject::Value { value } => Ok(value.clone()),
+                    obj => return Err(format!("Cannot deserialize String from `{}`", obj)),
                 }
             }
         }
@@ -28,6 +40,26 @@ macro_rules! impl_deserialize_for_primitive
             type Error = String;
 
             fn try_from(json: JsonObject) -> Result<Self, Self::Error>
+            {
+                let string = match json
+                {
+                    JsonObject::Value { value } => value,
+                    obj => return Err(format!("Cannot deserialize {} from `{}`", stringify!($typ), obj)),
+                };
+
+                match string.parse::<$typ>()
+                {
+                    Ok(parsed) => Ok(parsed),
+                    Err(_) => Err(format!("Cannot parse `{}` into {} !", string, stringify!($typ))),
+                }
+            }
+        }
+
+        impl TryFrom<&JsonObject> for $typ
+        {
+            type Error = String;
+
+            fn try_from(json: &JsonObject) -> Result<Self, Self::Error>
             {
                 let string = match json
                 {

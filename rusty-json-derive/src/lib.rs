@@ -1,4 +1,5 @@
 mod serialize;
+mod deserialize;
 
 use proc_macro::TokenStream;
 use quote::quote;
@@ -7,13 +8,15 @@ use std::cell::RefCell;
 
 use serialize::{into_json_macro_impl, to_json_macro_impl};
 
+use crate::deserialize::try_from_json_macro_impl;
+
 #[derive(Debug, Clone)]
 pub(crate) enum TokenLayer
 {
     Ident { ident: syn::Ident, next: Rc<RefCell<TokenLayer>> },
     Tuple { items: Vec<Rc<RefCell<TokenLayer>>>, size: usize },
     Array { typ: Rc<RefCell<TokenLayer>> },
-    Item,
+    Item { typ: syn::Type },
 }
 
 #[proc_macro_derive(JsonSerialize)]
@@ -44,24 +47,40 @@ pub fn to_json_macro_derive(input: TokenStream) -> TokenStream
     to_json_macro_impl(type_name, fields).into()
 }
 
-fn token_stream_into_syn_tree(tree: &syn::DeriveInput) -> (&syn::Ident, impl Iterator<Item = &syn::Field> + Clone)
+#[proc_macro_derive(JsonDeserialize)]
+pub fn json_deserialize_macro_derive(input: TokenStream) -> TokenStream
 {
-    match &tree.data
+    let tree = syn::parse(input).unwrap();
+    let (type_name, fields) = token_stream_into_syn_tree(&tree);
+    try_from_json_macro_impl(type_name, fields).into()
+}
+
+fn token_stream_into_syn_tree(tree: &syn::DeriveInput) -> (&syn::Ident, impl Iterator<Item = (&syn::Ident, Rc<RefCell<TokenLayer>>)> + Clone)
+{
+    let (ident, iter) = match &tree.data
     {
         syn::Data::Struct(str) =>
         {
-            if let syn::Fields::Named(named) = &str.fields { (&tree.ident, named.named.iter() ) }
+            if let syn::Fields::Named(named) = &str.fields
+            {
+                (
+                    &tree.ident,
+                    named.named.iter().map(|f| (f.ident.as_ref().unwrap(), f)).map(|(i, f)| (i, field_into_token_layers(f)))
+                )
+            }
             else { panic!("syn::Data:Struct did not have syn::Fields::Named !") }
         },
         syn::Data::Enum(_) => panic!("Enums are not currently supported !"),
         syn::Data::Union(_) => panic!("Unions are not currently supported !"),
-    }
+    };
+
+    (ident, iter.map(|(i, f)| (i, Rc::new(RefCell::new(f)))))
 }
 
 pub(crate) fn field_into_token_layers(field: &syn::Field) -> TokenLayer
 {
     let fields_name_str = field.ident.as_ref().unwrap().to_string();
-    let layer_root = Rc::new(RefCell::new(TokenLayer::Ident { ident: field.ident.as_ref().unwrap().clone(), next: Rc::new(RefCell::new(TokenLayer::Item)) }));
+    let layer_root = Rc::new(RefCell::new(TokenLayer::Ident { ident: field.ident.as_ref().unwrap().clone(), next: Rc::new(RefCell::new(TokenLayer::Item { typ: field.ty.clone() })) }));
     let mut types: std::collections::VecDeque<(syn::Type, Rc<RefCell<TokenLayer>>)> = std::collections::VecDeque::with_capacity(1);
     types.push_front((field.ty.clone(), layer_root.clone()));
 
@@ -73,13 +92,13 @@ pub(crate) fn field_into_token_layers(field: &syn::Field) -> TokenLayer
             {
                 match &mut *layer.borrow_mut()
                 {
-                    &mut TokenLayer::Ident { ident: _, next: _ } | &mut TokenLayer::Array { typ: _ } | TokenLayer::Item => (),
-                    &mut TokenLayer::Tuple { ref mut items, size: _ } => items.push(Rc::new(RefCell::new(TokenLayer::Item))),
+                    &mut TokenLayer::Ident { ident: _, next: _ } | &mut TokenLayer::Array { typ: _ } | TokenLayer::Item { typ: _ } => (),
+                    &mut TokenLayer::Tuple { ref mut items, size: _ } => items.push(Rc::new(RefCell::new(TokenLayer::Item { typ }))),
                 }
             },
             syn::Type::Array(data) =>
             {
-                let array = Rc::new(RefCell::new(TokenLayer::Array { typ: Rc::new(RefCell::new(TokenLayer::Item)) }));
+                let array = Rc::new(RefCell::new(TokenLayer::Array { typ: Rc::new(RefCell::new(TokenLayer::Item { typ: (*data.elem).clone() })) }));
                 types.push_back((*data.elem.clone(), array.clone()));
 
                 match &mut *layer.borrow_mut()
