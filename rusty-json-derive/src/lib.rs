@@ -68,7 +68,7 @@ fn token_stream_into_syn_tree(tree: &syn::DeriveInput) -> (&syn::Ident, impl Ite
                     named.named.iter().map(|f| (f.ident.as_ref().unwrap(), f)).map(|(i, f)| (i, field_into_token_layers(f)))
                 )
             }
-            else { panic!("syn::Data:Struct did not have syn::Fields::Named !") }
+            else { panic!("syn::Data::Struct did not have syn::Fields::Named !") }
         },
         syn::Data::Enum(_) => panic!("Enums are not currently supported !"),
         syn::Data::Union(_) => panic!("Unions are not currently supported !"),
