@@ -99,7 +99,7 @@ struct MyStruct
 
 ### Serialization and deserialization
 
-The following functions show how to serialize and deserialize an object to JSON.
+The following functions show how to serialize and deserialize an object to and from JSON.
 
 ```rust
 
