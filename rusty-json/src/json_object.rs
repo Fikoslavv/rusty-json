@@ -270,7 +270,6 @@ fn deserialize_string(value: &[char]) -> Result<JsonObject, &'static str>
 fn find_chars(value: &[char], char_to_find: char, break_on_first_occurence: bool) -> Result<Vec<usize>, &'static str>
 {
     let mut string_closing_char: Option<char> = None;
-    let mut is_string = false;
     let mut is_escaping = false;
     let mut object_level = 0u64;
     let mut array_level = 0u64;
@@ -281,7 +280,7 @@ fn find_chars(value: &[char], char_to_find: char, break_on_first_occurence: bool
         {
             '"' | '\'' if !is_escaping =>
             {
-                if !is_string
+                if string_closing_char.is_none()
                 {
                     if let Some(closing_char) = string_closing_char
                     {
@@ -289,22 +288,22 @@ fn find_chars(value: &[char], char_to_find: char, break_on_first_occurence: bool
                     }
                     else { string_closing_char = Some(*char); }
                 }
-                else { is_string = false; }
+                else { string_closing_char = None; }
             },
-            '{' => if !is_string { object_level += 1; },
-            '[' => if !is_string { array_level += 1; },
-            '}' if !is_string && !is_escaping =>
+            '{' => if string_closing_char.is_none() { object_level += 1; },
+            '[' => if string_closing_char.is_none() { array_level += 1; },
+            '}' if string_closing_char.is_none() && !is_escaping =>
             {
                 if object_level > 0 { object_level -= 1; }
                 else { return Err("Given string is not valid json !"); }
             },
-            ']' if !is_string =>
+            ']' if string_closing_char.is_none() =>
             {
                 if array_level > 0 { array_level -= 1; }
                 else { return Err("Given string is not valid json !"); }
             },
-            '\\' if is_string => is_escaping = !is_escaping,
-            char if *char == char_to_find && !is_string && object_level == 0 && array_level == 0 =>
+            '\\' if string_closing_char.is_some() => is_escaping = !is_escaping,
+            char if *char == char_to_find && string_closing_char.is_none() && object_level == 0 && array_level == 0 =>
             {
                 comma_index.push(index);
 
