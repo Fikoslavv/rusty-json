@@ -32,14 +32,7 @@ impl TryFrom<&str> for JsonObject
     fn try_from(value: &str) -> Result<Self, Self::Error>
     {
         let value = value.trim();
-        // println!("Deserializing => `{}`", value);
-
-        match value.chars().count()
-        {
-            0 => return Ok(Self::Null),
-            1 => return Err("Given string is not valid json !"),
-            _ => { }
-        }
+        if value.is_empty() { return Ok(Self::Null) }
 
         let value = &value.chars().collect::<Vec<char>>()[..];
 
