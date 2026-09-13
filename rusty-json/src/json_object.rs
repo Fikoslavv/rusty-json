@@ -414,6 +414,28 @@ mod test
 {
     use super::*;
 
+    macro_rules! test_unreliable_function
+    {
+        ($function:ident, $str:literal, $arm_ok_value:ident, $arm_ok:expr, $arm_err_value:ident, $arm_err:expr) =>
+        {
+            match $function(static_string_to_char_slice!($str))
+            {
+                Ok($arm_ok_value) => $arm_ok,
+                Err($arm_err_value) => $arm_err,
+            }
+        };
+
+        ($function:ident, $str:literal, SHOULD_FAIL) =>
+        {
+            test_unreliable_function!($function, $str, _ignored, panic!("{} returned Ok!", stringify!($function)), _ignored, ())
+        };
+
+        ($function:ident, $str:literal, SHOULD_PASS) =>
+        {
+            test_unreliable_function!($function, $str, _ignored, (), reason, panic!("{}", reason))
+        };
+    }
+
     mod deserializer
     {
         use super::*;
@@ -433,11 +455,7 @@ mod test
             #[test]
             fn test_deserialize_string_unquoted_empty()
             {
-                match deserialize_string(&Vec::new())
-                {
-                    Err(_) => (),
-                    _ => panic!("deserialize_string returned Ok!"),
-                }
+                test_unreliable_function!(deserialize_string, "", SHOULD_FAIL)
             }
 
             #[test]
@@ -477,191 +495,115 @@ mod test
             #[test]
             fn test_deserialize_string_invalid_ends_with_double_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"something""#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"something""#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_invalid_ends_with_single_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"something'"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"something'"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_double_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""something"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#""something"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_single_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'something"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"'something"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_double_quote_ends_with_single_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""something'"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#""something'"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_single_quote_ends_with_double_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'something""#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"'something""#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_invalid_with_leading_word()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"hello"world""#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"hello"world""#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_invalid_with_leading_word()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"hello'world'"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"hello'world'"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_invalid_with_trailing_word()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""hello"world"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#""hello"world"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_invalid_with_trailing_word()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'hello'world"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"'hello'world"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_invalid_containing_unescaped_double_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""some"thing""#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#""some"thing""#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_unescaped_single_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""some'thing""#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""some'thing""#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_containing_unescaped_double_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'some"thing'"#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#"'some"thing'"#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_invalid_containing_unescaped_single_quote()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'some'thing'"#))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, r#"'some'thing'"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_bracket_opening()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""hello[world!""#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""hello[world!""#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_bracket_closing()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""hello]world!""#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""hello]world!""#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_brace_opening()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""hello{world!""#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""hello{world!""#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_brace_closing()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""hello}world!""#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""hello}world!""#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_string_unquoted_multiple_words()
             {
-                match deserialize_string(static_string_to_char_slice!("test test"))
-                {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_string, "test test", SHOULD_FAIL)
             }
 
             #[test]
@@ -830,41 +772,25 @@ mod test
             #[test]
             fn test_deserialize_field_empty_string()
             {
-                match deserialize_field(&Vec::new())
-                {
-                    Ok(_) => panic!("deserialize_field returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_field, "", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_field_only_colon()
             {
-                match deserialize_field(static_string_to_char_slice!(":"))
-                {
-                    Ok(_) => panic!("deserialize_field returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_field, ":", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_missing_value()
             {
-                match deserialize_field(static_string_to_char_slice!(r#""key":"#))
-                {
-                    Ok(_) => panic!("deserialize_field returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_field, r#""key":"#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_field_key_missing_value_double_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#":"value""#))
-                {
-                    Ok(_) => panic!("deserialize_field returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_field, r#":"value""#, SHOULD_FAIL)
             }
 
             #[test]
@@ -1050,41 +976,25 @@ mod test
             #[test]
             fn test_deserialize_field_key_object_value_double_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!("{key:null}:null"))
-                {
-                    Ok(_) => panic!("deserialize_field returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_field, "{key:null}:null", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_field_key_array_value_double_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#"[1,2]:"null""#))
-                {
-                    Ok(_) => panic!("deserialize_field returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_field, r#"[1,2]:"null""#, SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_array()
             {
-                match deserialize_field(static_string_to_char_slice!(r#""key":[1,2,3]"#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#""key":[1,2,3]"#, SHOULD_PASS)
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_object()
             {
-                match deserialize_field(static_string_to_char_slice!(r#""key":{"inner-key":"value"}"#))
-                {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#""key":{"inner-key":"value"}"#, SHOULD_PASS)
             }
         }
 
@@ -1095,31 +1005,19 @@ mod test
             #[test]
             fn test_deserialize_array_empty_string()
             {
-                match deserialize_array(&Vec::new())
-                {
-                    Ok(_) => panic!("deserialize_array returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_array, "", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_array_invalid_leading_character()
             {
-                match deserialize_array(static_string_to_char_slice!("f[1,2,3]"))
-                {
-                    Ok(_) => panic!("deserialize_array returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_array, "f[1,2,3]", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_array_invalid_trailing_character()
             {
-                match deserialize_array(static_string_to_char_slice!("[1,2,3]f"))
-                {
-                    Ok(_) => panic!("deserialize_array returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_array, "[1,2,3]f", SHOULD_FAIL)
             }
 
             #[test]
@@ -1424,31 +1322,19 @@ mod test
             #[test]
             fn test_deserialize_object_empty_string()
             {
-                match deserialize_object(&Vec::new())
-                {
-                    Ok(_) => panic!("deserialize_object returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_object, "", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_object_invalid_leading_character()
             {
-                match deserialize_object(static_string_to_char_slice!("!]"))
-                {
-                    Ok(_) => panic!("deserialize_object returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_object, "!]", SHOULD_FAIL)
             }
 
             #[test]
             fn test_deserialize_object_invalid_trailing_character()
             {
-                match deserialize_object(static_string_to_char_slice!("[!"))
-                {
-                    Ok(_) => panic!("deserialize_object returned Ok!"),
-                    Err(_) => return,
-                }
+                test_unreliable_function!(deserialize_object, "[!", SHOULD_FAIL)
             }
 
             #[test]
