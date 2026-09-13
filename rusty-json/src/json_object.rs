@@ -229,42 +229,57 @@ fn deserialize_field(value: &[char]) -> Result<(String, JsonObject), &'static st
 fn deserialize_string(value: &[char]) -> Result<JsonObject, &'static str>
 {
     let value = value.trim();
-    // println!("Deserializing string => `{}`", value.iter().collect::<String>());
+    if value.is_empty() { return Err("An empty string cannot be deserialized !") }
+    else if value.iter().eq([ 'n', 'u', 'l', 'l' ].iter()) { return Ok(JsonObject::Null) }
 
-    let mut string_closing_character: Option<char> = None;
-    let mut escaping = false;
-    let mut is_string = false;
-
-    for (index, char) in value.iter().enumerate()
+    let string_closing_char =
     {
-        if *char == '\\'
+        let first_char = *value.first().unwrap();
+        if first_char == '"' || first_char == '\''
         {
-            escaping = !escaping;
+            if value.last().unwrap() == &first_char { Some(first_char) }
+            else { return Err("A string must start and end with the same quotation mark (either single or double quotes) !") }
         }
-        else if *char == ' '
+        else { None }
+    };
+    let mut deserialized = String::with_capacity(value.len());
+    let mut it = (if string_closing_char.is_some() { &value[1..value.len() - 1] } else { &value }).into_iter();
+    let mut is_escaping = false;
+    while let Some(char) = it.next()
+    {
+        match char
         {
-            if !is_string { return Err("Given string is not valid json !"); }
-        }
-        else if *char == '\'' || *char == '"'
-        {
-            if index > 0 && index < value.len() - 1 && !escaping { return Err("Given string is not valid json !"); }
-            else if string_closing_character.is_none()
+            _ if char.is_control() => return Err("Control characters in strings must be represented as `\\uXXXX` where X is a hex number !"),
+            '\\' if !is_escaping => is_escaping = true,
+            'u' if is_escaping =>
             {
-                string_closing_character = Some(*char);
-                is_string = true;
-            }
-            else if escaping || *char != string_closing_character.unwrap() { escaping = false; }
-            else
+                is_escaping = false;
+                if let Ok(unescaped) = u32::from_str_radix(it.by_ref().take(4).collect::<String>().as_str(), 16)
+                {
+                    if let Some(char_unescaped) = char::from_u32(unescaped) { deserialized.push(char_unescaped) }
+                    else { return Err("Given string contains an escape with value out of range for utf-8 encoding !") }
+                }
+                else { return Err("Given string contains an escape with codepoint unparsable as a hex number !") }
+            },
+            _ if is_escaping =>
             {
-                string_closing_character = None;
-                if index < value.len() - 1 { return Err("Given string is not valid json !"); }
-            }
+                match char
+                {
+                    '\\' | '"' | '\'' | '/' | '\u{8}' | '\u{c}' | '\n' | '\r' | '\t' => (),
+                    _ => return Err("Given string contains an invalid escape !"),
+                }
+
+                is_escaping = false;
+                deserialized.push(*char);
+            },
+            '"' | '\'' if string_closing_char.is_none() || (string_closing_char.is_some() && string_closing_char.unwrap() == *char) => return Err("Given string contains unescaped quotation marks !"),
+            ' ' if string_closing_char.is_none() => return Err("Unquoted string may only be one word !"),
+            _ => deserialized.push(*char),
         }
     }
 
-    if is_string { Ok(JsonObject::Value { value: value[1..value.len() - 1].iter().collect::<String>() }) }
-    else if value.len() == 4 && value.iter().zip([ 'n', 'u', 'l', 'l' ]).all(|(l, r)| *l == r) { Ok(JsonObject::Null) }
-    else { Ok(JsonObject::Value { value: value.iter().collect::<String>() }) }
+    deserialized.shrink_to_fit();
+    Ok(JsonObject::Value { value: dbg!(deserialized) })
 }
 
 fn find_chars(value: &[char], char_to_find: char, break_on_first_occurence: bool) -> Result<Vec<usize>, &'static str>
@@ -570,7 +585,7 @@ mod test
             }
 
             #[test]
-            fn test_deserialize_string_double_quoted_invalid_containing_unescaped_single_quote()
+            fn test_deserialize_string_double_quoted_containing_unescaped_single_quote()
             {
                 match deserialize_string(static_string_to_char_slice!(r#""some'thing""#))
                 {
@@ -580,12 +595,12 @@ mod test
             }
 
             #[test]
-            fn test_deserialize_string_single_quoted_invalid_containing_unescaped_double_quote()
+            fn test_deserialize_string_single_quoted_containing_unescaped_double_quote()
             {
                 match deserialize_string(static_string_to_char_slice!(r#"'some"thing'"#))
                 {
-                    Ok(_) => panic!("deserialize_string returned Ok!"),
-                    Err(_) => return,
+                    Ok(_) => return,
+                    Err(reason) => panic!("{}", reason),
                 }
             }
 
@@ -594,8 +609,8 @@ mod test
             {
                 match deserialize_string(static_string_to_char_slice!(r#"'some'thing'"#))
                 {
-                    Ok(_) => return,
-                    Err(reason) => panic!("{}", reason),
+                    Ok(_) => panic!("deserialize_string returned Ok!"),
+                    Err(_) => return,
                 }
             }
 
@@ -798,8 +813,8 @@ mod test
                     {
                         if let JsonObject::Value { value } = json
                         {
-                            if value == "\t\n\r" { return }
-                            else { panic!("deserialize_string returned `{}` while `\\t\\n\\r` (escaped) was expected!", value) }
+                            if value == "\t\n\r\"\\" { return }
+                            else { panic!("deserialize_string returned `{}`[{}] while `\\t\\n\\r\\\"\\`[5] (escaped) was expected!", value, value.len()) }
                         }
                         else { panic!("deserialize_string returned JsonObject of an unexpected variant!") }
                     },
