@@ -200,27 +200,34 @@ fn deserialize_array(value: &[char]) -> Result<JsonObject, &'static str>
 fn deserialize_field(value: &[char]) -> Result<(String, JsonObject), &'static str>
 {
     let value = value.trim();
-    // println!("Deserializing field => `{}`", value.iter().collect::<String>());
 
-    let colon_index = find_chars(value, ':', true)?;
-    let colon_index = colon_index.first();
+    let colon_index = match find_chars(value, ':', true)?.first()
+    {
+        Some(colon_index) => *colon_index,
+        None => return Err("Field must have a name and value devided by a colon !"),
+    };
 
-    let colon_index = if let Some(colon_index) = colon_index { *colon_index } else { return Err("Given string is not valid json !"); };
+    let field_name = (&value[..colon_index]).trim();
+    let field_value = (&value[colon_index + 1..]).trim();
 
-    let field_name = match deserialize_string(&value[..colon_index])?
+    if field_name.is_empty() { return Err("Field must have a key !") }
+    let field_name_char_leading = field_name[0];
+    let field_name_char_trailing = field_name[field_name.len() - 1];
+    if (field_name_char_leading == '{' && field_name_char_trailing == '}') || (field_name_char_leading == '[' || field_name_char_trailing == ']') { return Err("Field cannot have an array or an object as its key !") }
+    if field_value.is_empty() { return Err("Field must have a value !") }
+
+    let field_name = match deserialize_string(field_name)?
     {
         JsonObject::Null => format!("null"),
         JsonObject::Value { value } => value,
         _ => return Err("JsonObject::decode_string(…) returned unexpected JsonObject type !"),
     };
 
-    let field_value_str = (&value[(colon_index + 1)..]).trim();
-    let field_value =
-    match field_value_str.first().unwrap()
+    let field_value = match field_value.first().unwrap()
     {
-        '[' => deserialize_array(field_value_str)?,
-        '{' => deserialize_object(field_value_str)?,
-        _ => deserialize_string(field_value_str)?,
+        '[' => deserialize_array(field_value)?,
+        '{' => deserialize_object(field_value)?,
+        _ => deserialize_string(field_value)?,
     };
 
     Ok((field_name, field_value))
