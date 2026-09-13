@@ -329,6 +329,16 @@ fn serialize_string(value: &str) -> String
         {
             '\\' => serialized.push_str(r"\\"),
             '"' => serialized.push_str("\\\""),
+            _ if char.is_ascii_control() =>
+            {
+                serialized.try_reserve(5).unwrap();
+                serialized.push_str("\\u");
+                let escaped = char.escape_unicode();
+                let escaped_len = escaped.len();
+                let escaped_value_len = escaped_len - 4;
+                for _ in 0..(4 - escaped_value_len) { serialized.push('0'); }
+                for c in escaped.skip(3).take(escaped_value_len) { serialized.push(c); }
+            },
             _ => serialized.push(char),
         };
     }
@@ -782,7 +792,7 @@ mod test
             #[test]
             fn test_deserialize_string_double_quoted_containing_escaped_symbols()
             {
-                match deserialize_string(static_string_to_char_slice!("\"\\u{9}\\u{a}\\u{d}\""))
+                match deserialize_string(static_string_to_char_slice!(r#""\u0009\u000a\u000d\"\\""#))
                 {
                     Ok(json) =>
                     {
@@ -1801,7 +1811,7 @@ mod test
             #[test]
             fn test_serialize_string_with_escaped_characters()
             {
-                assert_eq!(serialize_string("\t\n\r"), r#""\u{9}\u{a}\u{d}""#)
+                assert_eq!(serialize_string("\t\n\r\"\\"), r#""\u0009\u000a\u000d\"\\""#)
             }
         }
 
