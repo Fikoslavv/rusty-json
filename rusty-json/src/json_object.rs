@@ -279,7 +279,7 @@ fn deserialize_string(value: &[char]) -> Result<JsonObject, &'static str>
     }
 
     deserialized.shrink_to_fit();
-    Ok(JsonObject::Value { value: dbg!(deserialized) })
+    Ok(JsonObject::Value { value: deserialized })
 }
 
 fn find_chars(value: &[char], char_to_find: char, break_on_first_occurence: bool) -> Result<Vec<usize>, &'static str>
