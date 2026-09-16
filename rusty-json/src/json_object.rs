@@ -237,8 +237,9 @@ fn deserialize_string(value: &[char]) -> Result<JsonObject, &'static str>
         let first_char = *value.first().unwrap();
         if first_char == '"' || first_char == '\''
         {
+            if value.len() < 2 { return Err("A quoted string must start and end with a quotation mark (either single or double)!") }
             if value.last().unwrap() == &first_char { Some(first_char) }
-            else { return Err("A string must start and end with the same quotation mark (either single or double quotes) !") }
+            else { return Err("A quoted string must start and end with the same quotation mark (either single or double quotes) !") }
         }
         else { None }
     };
