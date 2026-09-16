@@ -416,23 +416,85 @@ mod test
 
     macro_rules! test_unreliable_function
     {
-        ($function:ident, $str:literal, $arm_ok_value:ident, $arm_ok:expr, $arm_err_value:ident, $arm_err:expr) =>
+        ($match:expr, $arm_ok_value:ident, $arm_ok:expr, $arm_err_value:ident, $arm_err:expr) =>
         {
-            match $function(static_string_to_char_slice!($str))
+            match $match
             {
                 Ok($arm_ok_value) => $arm_ok,
                 Err($arm_err_value) => $arm_err,
             }
         };
 
-        ($function:ident, $str:literal, SHOULD_FAIL) =>
+        ($match:expr, SHOULD_FAIL) =>
         {
-            test_unreliable_function!($function, $str, _ignored, panic!("{} returned Ok!", stringify!($function)), _ignored, ())
+            test_unreliable_function!($match, _ignored, panic!("{} returned Ok!", stringify!($function)), _ignored, ())
         };
 
-        ($function:ident, $str:literal, SHOULD_PASS) =>
+        ($function:ident, $str:literal, SHOULD_FAIL DEFAULT_DESERIALIZER) =>
         {
-            test_unreliable_function!($function, $str, _ignored, (), reason, panic!("{}", reason))
+            test_unreliable_function!($function(static_string_to_char_slice!($str)), SHOULD_FAIL)
+        };
+
+        ($match:expr, SHOULD_PASS) =>
+        {
+            test_unreliable_function!($match, _ignored, (), reason, panic!("{}", reason))
+        };
+
+        ($function:ident, $str:literal, SHOULD_PASS DEFAULT_DESERIALIZER) =>
+        {
+            test_unreliable_function!($function(static_string_to_char_slice!($str)), SHOULD_PASS)
+        };
+
+        ($match:expr, SHOULD_RETURN_STRING, $str_out:literal) =>
+        {
+            test_unreliable_function!
+            (
+                $match,
+                json,
+                {
+                    if let JsonObject::Value { value } = json { assert_eq!(value, $str_out) }
+                    else { panic!("An unexpected variant of JsonObject was returned!") }
+                },
+                reason,
+                panic!("{}", reason))
+        };
+
+        ($function:ident, $str:literal, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, $str_out:literal) =>
+        {
+            test_unreliable_function!($function(static_string_to_char_slice!($str)), SHOULD_RETURN_STRING, $str_out)
+        };
+
+        ($match:expr, SHOULD_RETURN_NULL) =>
+        {
+            test_unreliable_function!
+            (
+                $match,
+                json,
+                {
+                    if let JsonObject::Null = json { }
+                    else { panic!("An unexpected variant of JsonObject was returned!") }
+                },
+                reason,
+                panic!("{}", reason))
+        };
+
+        ($function:ident, $str:literal, SHOULD_RETURN_NULL DEFAULT_DESERIALIZER) =>
+        {
+            test_unreliable_function!($function(static_string_to_char_slice!($str)), SHOULD_RETURN_NULL)
+        };
+
+        ($function:ident, $str:literal, SHOULD_RETURN_FIELD, $field_key:literal, $field_value:literal) =>
+        {
+            test_unreliable_function!
+            (
+                $function(static_string_to_char_slice!($str)),
+                json,
+                {
+                    if let (key, JsonObject::Value { value }) = json { assert!(key == $field_key && value == $field_value) }
+                    else { panic!("An unexpected variant of JsonObject was returned!") }
+                },
+                reason,
+                panic!("{}", reason))
         };
     }
 
@@ -455,313 +517,199 @@ mod test
             #[test]
             fn test_deserialize_string_unquoted_empty()
             {
-                test_unreliable_function!(deserialize_string, "", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, "", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_empty()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""""#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value.len() == 0 { return }
-                            else { panic!("deserialize_string returned JsonObject::Value with length > 0!") }
-                        }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""""#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "")
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_empty()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"''"#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value.len() == 0 { return }
-                            else { panic!("deserialize_string returned JsonObject::Value with length > 0!") }
-                        }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#"''"#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "")
+            }
+
+            #[test]
+            fn test_deserialize_string_double_quote_only()
+            {
+                test_unreliable_function!(deserialize_string, "\"", SHOULD_FAIL DEFAULT_DESERIALIZER)
+            }
+
+            #[test]
+            fn test_deserialize_string_single_quote_only()
+            {
+                test_unreliable_function!(deserialize_string, "'", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_invalid_ends_with_double_quote()
             {
-                test_unreliable_function!(deserialize_string, r#"something""#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"something""#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_invalid_ends_with_single_quote()
             {
-                test_unreliable_function!(deserialize_string, r#"something'"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"something'"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_double_quote()
             {
-                test_unreliable_function!(deserialize_string, r#""something"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#""something"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_single_quote()
             {
-                test_unreliable_function!(deserialize_string, r#"'something"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"'something"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_double_quote_ends_with_single_quote()
             {
-                test_unreliable_function!(deserialize_string, r#""something'"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#""something'"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_invalid_starts_with_single_quote_ends_with_double_quote()
             {
-                test_unreliable_function!(deserialize_string, r#"'something""#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"'something""#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_invalid_with_leading_word()
             {
-                test_unreliable_function!(deserialize_string, r#"hello"world""#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"hello"world""#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_invalid_with_leading_word()
             {
-                test_unreliable_function!(deserialize_string, r#"hello'world'"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"hello'world'"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_invalid_with_trailing_word()
             {
-                test_unreliable_function!(deserialize_string, r#""hello"world"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#""hello"world"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_invalid_with_trailing_word()
             {
-                test_unreliable_function!(deserialize_string, r#"'hello'world"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"'hello'world"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_invalid_containing_unescaped_double_quote()
             {
-                test_unreliable_function!(deserialize_string, r#""some"thing""#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#""some"thing""#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_unescaped_single_quote()
             {
-                test_unreliable_function!(deserialize_string, r#""some'thing""#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_string, r#""some'thing""#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_containing_unescaped_double_quote()
             {
-                test_unreliable_function!(deserialize_string, r#"'some"thing'"#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_string, r#"'some"thing'"#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_invalid_containing_unescaped_single_quote()
             {
-                test_unreliable_function!(deserialize_string, r#"'some'thing'"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, r#"'some'thing'"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_bracket_opening()
             {
-                test_unreliable_function!(deserialize_string, r#""hello[world!""#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_string, r#""hello[world!""#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_bracket_closing()
             {
-                test_unreliable_function!(deserialize_string, r#""hello]world!""#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_string, r#""hello]world!""#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_brace_opening()
             {
-                test_unreliable_function!(deserialize_string, r#""hello{world!""#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_string, r#""hello{world!""#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_brace_closing()
             {
-                test_unreliable_function!(deserialize_string, r#""hello}world!""#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_string, r#""hello}world!""#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_unquoted_multiple_words()
             {
-                test_unreliable_function!(deserialize_string, "test test", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_string, "test test", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_multiple_words()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""hello world!""#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "hello world!" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `hello world!`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""hello world!""#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "hello world!")
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_multiple_words()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'hello world!'"#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "hello world!" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `hello world!`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#"'hello world!'"#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "hello world!")
             }
 
             #[test]
             fn test_deserialize_string_unquoted_null()
             {
-                match deserialize_string(static_string_to_char_slice!("null"))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Null = obj { return }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, "null", SHOULD_RETURN_NULL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_null()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""null""#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "null" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `null`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""null""#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "null")
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_null()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'null'"#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "null" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `null`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#"'null'"#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "null")
             }
 
             #[test]
             fn test_deserialize_string_unquoted_one_word()
             {
-                match deserialize_string(static_string_to_char_slice!("something"))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "something" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `something`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, "something", SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "something")
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_one_word()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""something""#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "something" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `something`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""something""#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "something")
             }
 
             #[test]
             fn test_deserialize_string_single_quoted_one_word()
             {
-                match deserialize_string(static_string_to_char_slice!(r#"'something'"#))
-                {
-                    Ok(obj) =>
-                    {
-                        if let JsonObject::Value { value } = obj
-                        {
-                            if value == "something" { return }
-                            else { panic!("deserialize_string returned `{}` instead of `something`!", value) }
-                        }
-                        else { panic!("deserialize_string returned an incorrect JsonObject type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#"'something'"#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "something")
             }
 
             #[test]
             fn test_deserialize_string_double_quoted_containing_escaped_symbols()
             {
-                match deserialize_string(static_string_to_char_slice!(r#""\u0009\u000a\u000d\"\\""#))
-                {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if value == "\t\n\r\"\\" { return }
-                            else { panic!("deserialize_string returned `{}`[{}] while `\\t\\n\\r\\\"\\`[5] (escaped) was expected!", value, value.len()) }
-                        }
-                        else { panic!("deserialize_string returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_string, r#""\u0009\u000a\u000d\"\\""#, SHOULD_RETURN_STRING DEFAULT_DESERIALIZER, "\t\n\r\"\\")
             }
         }
 
@@ -772,229 +720,109 @@ mod test
             #[test]
             fn test_deserialize_field_empty_string()
             {
-                test_unreliable_function!(deserialize_field, "", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_field, "", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_only_colon()
             {
-                test_unreliable_function!(deserialize_field, ":", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_field, ":", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_missing_value()
             {
-                test_unreliable_function!(deserialize_field, r#""key":"#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_field, r#""key":"#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_key_missing_value_double_quoted()
             {
-                test_unreliable_function!(deserialize_field, r#":"value""#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_field, r#":"value""#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_key_null_value_unquoted()
             {
-                match deserialize_field(static_string_to_char_slice!("null:b"))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "null" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `null:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, "null:b", SHOULD_RETURN_FIELD, "null", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_unquoted_value_unquoted()
             {
-                match deserialize_field(static_string_to_char_slice!("a:b"))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, "a:b", SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_unquoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#""a":b"#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#""a":b"#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_single_quoted_value_unquoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#"'a':b"#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#"'a':b"#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_unquoted_value_double_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#"a:"b""#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#"a:"b""#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_double_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#""a":"b""#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#""a":"b""#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_single_quoted_value_double_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#"'a':"b""#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#"'a':"b""#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_unquoted_value_single_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#"a:'b'"#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#"a:'b'"#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_single_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#""a":'b'"#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#""a":'b'"#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_single_quoted_value_single_quoted()
             {
-                match deserialize_field(static_string_to_char_slice!(r#"'a':'b'"#))
-                {
-                    Ok((key, json)) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if key == "a" && value == "b" { return }
-                            else { panic!("deserialize_field returned `{}:{}` instead of `a:b`!", key, value) }
-                        }
-                        else { panic!("deserialize_field returned field of unexpected type!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(deserialize_field, r#"'a':'b'"#, SHOULD_RETURN_FIELD, "a", "b")
             }
 
             #[test]
             fn test_deserialize_field_key_object_value_double_quoted()
             {
-                test_unreliable_function!(deserialize_field, "{key:null}:null", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_field, "{key:null}:null", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_key_array_value_double_quoted()
             {
-                test_unreliable_function!(deserialize_field, r#"[1,2]:"null""#, SHOULD_FAIL)
+                test_unreliable_function!(deserialize_field, r#"[1,2]:"null""#, SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_array()
             {
-                test_unreliable_function!(deserialize_field, r#""key":[1,2,3]"#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_field, r#""key":[1,2,3]"#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_field_key_double_quoted_value_object()
             {
-                test_unreliable_function!(deserialize_field, r#""key":{"inner-key":"value"}"#, SHOULD_PASS)
+                test_unreliable_function!(deserialize_field, r#""key":{"inner-key":"value"}"#, SHOULD_PASS DEFAULT_DESERIALIZER)
             }
         }
 
@@ -1005,313 +833,228 @@ mod test
             #[test]
             fn test_deserialize_array_empty_string()
             {
-                test_unreliable_function!(deserialize_array, "", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_array, "", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_array_invalid_leading_character()
             {
-                test_unreliable_function!(deserialize_array, "f[1,2,3]", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_array, "f[1,2,3]", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_array_invalid_trailing_character()
             {
-                test_unreliable_function!(deserialize_array, "[1,2,3]f", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_array, "[1,2,3]f", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
-            fn test_deserialize_array_empty_array()
+            fn test_deserialize_array_empty_array() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!("[]"))
-                {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.is_empty() { return }
-                            else { panic!("deserialize_array returned non-empty array for input `[]`!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!("[]"))? { assert!(array.is_empty(), "deserialize_array returned non-empty array for input `[]`!") }
+                else { return Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
+
+                Ok(())
             }
 
             #[test]
-            fn test_deserialize_array_containing_single_string_without_trailing_comma()
+            fn test_deserialize_array_containing_single_string_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"["hello world!"]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"["hello world!"]"#))?
                 {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len()) }
-                            if let JsonObject::Value { value } = array.first().unwrap()
-                            {
-                                if value == "hello world!" { return }
-                                else { panic!(r#"deserialize_array returned `[{}]` instead of `["hello world!"]`!"#, value) }
-                            }
-                            else { panic!("deserialize_array returned an array containing JsonObject of unexpected variant!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                    assert_eq!(array.len(), 1, "deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len());
+
+                    if let JsonObject::Value { value } = array.first().unwrap() { assert_eq!(value, "hello world!", r#"deserialize_array returned `[{}]` instead of `["hello world!"]`!"#, value); }
+                    else { return Err("deserialize_array returned an array containing JsonObject of unexpected variant!".to_string()) }
                 }
+                else { return Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
+
+                Ok(())
             }
 
             #[test]
-            fn test_deserialize_array_containing_single_object_without_trailing_comma()
+            fn test_deserialize_array_containing_single_object_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"[{"key":null}]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"[{"key":null}]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 1, "deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len());
+
+                    if let JsonObject::Object { fields } = array.first().unwrap()
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len()) }
-                            if let JsonObject::Object { fields } = array.first().unwrap()
-                            {
-                                if fields.len() == 1 && let JsonObject::Null = fields.get("key").unwrap() { return }
-                                else { panic!(r#"deserialize_array didn't return `[{{"key":null}}]`!"#) }
-                            }
-                            else { panic!("deserialize_array returned an array containing JsonObject of unexpected variant!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if fields.len() == 1 && let JsonObject::Null = fields.get("key").unwrap() { Ok(()) }
+                        else { Err(r#"deserialize_array didn't return `[{{"key":null}}]`!"#.to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing JsonObject of unexpected variant!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_single_array_without_trailing_comma()
+            fn test_deserialize_array_containing_single_array_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!("[[null]]"))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!("[[null]]"))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 1, "deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len());
+
+                    if let JsonObject::Array { array } = array.first().unwrap()
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len()) }
-                            if let JsonObject::Array { array } = array.first().unwrap()
-                            {
-                                if array.len() == 1 && let JsonObject::Null = array.first().unwrap() { return }
-                                else { panic!(r#"deserialize_array didn't return `[[null]]`!"#) }
-                            }
-                            else { panic!("deserialize_array returned an array containing JsonObject of unexpected variant!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if array.len() == 1 && let JsonObject::Null = array.first().unwrap() { Ok(()) }
+                        else { Err(r#"deserialize_array didn't return `[[null]]`!"#.to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing JsonObject of unexpected variant!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_single_string_with_trailing_comma()
+            fn test_deserialize_array_containing_single_string_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"["hello world!",]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"["hello world!",]"#))?
                 {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len()) }
-                            if let JsonObject::Value { value } = array.first().unwrap()
-                            {
-                                if value == "hello world!" { return }
-                                else { panic!(r#"deserialize_array returned `[{}]` instead of `["hello world!"]`!"#, value) }
-                            }
-                            else { panic!("deserialize_array returned an array containing JsonObject of unexpected variant!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                    assert_eq!(array.len(), 1, "deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len());
+
+                    if let JsonObject::Value { value } = array.first().unwrap() { assert_eq!(value, "hello world!", r#"deserialize_array returned `[{}]` instead of `["hello world!"]`!"#, value) }
+                    else { return Err("deserialize_array returned an array containing JsonObject of unexpected variant!".to_string()) }
                 }
+                else { return Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
+
+                Ok(())
             }
 
             #[test]
-            fn test_deserialize_array_containing_single_object_with_trailing_comma()
+            fn test_deserialize_array_containing_single_object_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"[{"key":null},]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"[{"key":null},]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 1, "deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len());
+
+                    if let JsonObject::Object { fields } = array.first().unwrap()
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len()) }
-                            if let JsonObject::Object { fields } = array.first().unwrap()
-                            {
-                                if fields.len() == 1 && let JsonObject::Null = fields.get("key").unwrap() { return }
-                                else { panic!(r#"deserialize_array didn't return `[{{"key":null}}]`!"#) }
-                            }
-                            else { panic!("deserialize_array returned an array containing JsonObject of unexpected variant!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if fields.len() == 1 && let JsonObject::Null = fields.get("key").unwrap() { Ok(()) }
+                        else { Err(r#"deserialize_array didn't return `[{{"key":null}}]`!"#.to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing JsonObject of unexpected variant!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_single_array_with_trailing_comma()
+            fn test_deserialize_array_containing_single_array_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!("[[null],]"))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!("[[null],]"))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 1, "deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len());
+
+                    if let JsonObject::Array { array } = array.first().unwrap()
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("deserialize_array returned an array of `{}` element(s) while `1` element was expected!", array.len()) }
-                            if let JsonObject::Array { array } = array.first().unwrap()
-                            {
-                                if array.len() == 1 && let JsonObject::Null = array.first().unwrap() { return }
-                                else { panic!(r#"deserialize_array didn't return `[[null]]`!"#) }
-                            }
-                            else { panic!("deserialize_array returned an array containing JsonObject of unexpected variant!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if array.len() == 1 && let JsonObject::Null = array.first().unwrap() { Ok(()) }
+                        else { Err(r#"deserialize_array didn't return `[[null]]`!"#.to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing JsonObject of unexpected variant!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_string_object_array_without_trailing_comma()
+            fn test_deserialize_array_containing_string_object_array_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"["null",{"key":null},[]]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"["null",{"key":null},[]]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 3, "deserialize_array returned an array of length != 3!");
+
+                    if let JsonObject::Value { value: string } = &array[0] && let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 3 { panic!("deserialize_array returned an array of length != 3!") }
-                            else if let JsonObject::Value { value: string } = &array[0] && let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
-                            {
-                                if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { return }
-                                else { panic!("deserialize_array returned an array containing 3 elements with unexpected values!") }
-                            }
-                            else { panic!("deserialize_array returned an array containing unexpected JsonObject variant(s)!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { Ok(()) }
+                        else { Err("deserialize_array returned an array containing 3 elements with unexpected values!".to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing unexpected JsonObject variant(s)!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_object_string_array_without_trailing_comma()
+            fn test_deserialize_array_containing_object_string_array_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"[{"key":null},"null",[]]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"[{"key":null},"null",[]]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 3, "deserialize_array returned an array of length != 3!");
+
+                    if let JsonObject::Object { fields: object } = &array[0] && let JsonObject::Value { value: string } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 3 { panic!("deserialize_array returned an array of length != 3!") }
-                            else if let JsonObject::Object { fields: object } = &array[0] && let JsonObject::Value { value: string } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
-                            {
-                                if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { return }
-                                else { panic!("deserialize_array returned an array containing 3 elements with unexpected values!") }
-                            }
-                            else { panic!("deserialize_array returned an array containing unexpected JsonObject variant(s)!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { Ok(()) }
+                        else { Err("deserialize_array returned an array containing 3 elements with unexpected values!".to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing unexpected JsonObject variant(s)!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_array_object_string_without_trailing_comma()
+            fn test_deserialize_array_containing_array_object_string_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"[[],{"key":null},"null"]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"[[],{"key":null},"null"]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 3, "deserialize_array returned an array of length != 3!");
+
+                    if let JsonObject::Array { array: array_inner } = &array[0] &&  let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Value { value: string } = &array[2]
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 3 { panic!("deserialize_array returned an array of length != 3!") }
-                            else if let JsonObject::Array { array: array_inner } = &array[0] &&  let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Value { value: string } = &array[2]
-                            {
-                                if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { return }
-                                else { panic!("deserialize_array returned an array containing 3 elements with unexpected values!") }
-                            }
-                            else { panic!("deserialize_array returned an array containing unexpected JsonObject variant(s)!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { Ok(()) }
+                        else { Err("deserialize_array returned an array containing 3 elements with unexpected values!".to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing unexpected JsonObject variant(s)!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_string_object_array_with_trailing_comma()
+            fn test_deserialize_array_containing_string_object_array_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"["null",{"key":null},[],]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"["null",{"key":null},[],]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 3, "deserialize_array returned an array of length != 3!");
+
+                    if let JsonObject::Value { value: string } = &array[0] && let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 3 { panic!("deserialize_array returned an array of length != 3!") }
-                            else if let JsonObject::Value { value: string } = &array[0] && let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
-                            {
-                                if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { return }
-                                else { panic!("deserialize_array returned an array containing 3 elements with unexpected values!") }
-                            }
-                            else { panic!("deserialize_array returned an array containing unexpected JsonObject variant(s)!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { Ok(()) }
+                        else { Err("deserialize_array returned an array containing 3 elements with unexpected values!".to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing unexpected JsonObject variant(s)!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_object_string_array_with_trailing_comma()
+            fn test_deserialize_array_containing_object_string_array_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"[{"key":null},"null",[],]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"[{"key":null},"null",[],]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 3, "deserialize_array returned an array of length != 3!");
+
+                    if let JsonObject::Object { fields: object } = &array[0] && let JsonObject::Value { value: string } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 3 { panic!("deserialize_array returned an array of length != 3!") }
-                            else if let JsonObject::Object { fields: object } = &array[0] && let JsonObject::Value { value: string } = &array[1] && let JsonObject::Array { array: array_inner } = &array[2]
-                            {
-                                if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { return }
-                                else { panic!("deserialize_array returned an array containing 3 elements with unexpected values!") }
-                            }
-                            else { panic!("deserialize_array returned an array containing unexpected JsonObject variant(s)!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { Ok(()) }
+                        else { Err("deserialize_array returned an array containing 3 elements with unexpected values!".to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing unexpected JsonObject variant(s)!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_array_containing_array_object_string_with_trailing_comma()
+            fn test_deserialize_array_containing_array_object_string_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_array(static_string_to_char_slice!(r#"[[],{"key":null},"null",]"#))
+                if let JsonObject::Array { array } = deserialize_array(static_string_to_char_slice!(r#"[[],{"key":null},"null",]"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(array.len(), 3, "deserialize_array returned an array of length != 3!");
+
+                    if let JsonObject::Array { array: array_inner } = &array[0] &&  let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Value { value: string } = &array[2]
                     {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 3 { panic!("deserialize_array returned an array of length != 3!") }
-                            else if let JsonObject::Array { array: array_inner } = &array[0] &&  let JsonObject::Object { fields: object } = &array[1] && let JsonObject::Value { value: string } = &array[2]
-                            {
-                                if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { return }
-                                else { panic!("deserialize_array returned an array containing 3 elements with unexpected values!") }
-                            }
-                            else { panic!("deserialize_array returned an array containing unexpected JsonObject variant(s)!") }
-                        }
-                        else { panic!("deserialize_array returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        if string == "null" && let Some(object_value) = object.get("key") && let JsonObject::Null = object_value && array_inner.is_empty() { Ok(()) }
+                        else { Err("deserialize_array returned an array containing 3 elements with unexpected values!".to_string()) }
+                    }
+                    else { Err("deserialize_array returned an array containing unexpected JsonObject variant(s)!".to_string()) }
                 }
+                else { Err("deserialize_array returned JsonObject of an unexpected variant!".to_string()) }
             }
         }
 
@@ -1322,187 +1065,124 @@ mod test
             #[test]
             fn test_deserialize_object_empty_string()
             {
-                test_unreliable_function!(deserialize_object, "", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_object, "", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_object_invalid_leading_character()
             {
-                test_unreliable_function!(deserialize_object, "!]", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_object, "!]", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
             fn test_deserialize_object_invalid_trailing_character()
             {
-                test_unreliable_function!(deserialize_object, "[!", SHOULD_FAIL)
+                test_unreliable_function!(deserialize_object, "[!", SHOULD_FAIL DEFAULT_DESERIALIZER)
             }
 
             #[test]
-            fn test_deserialize_object_empty_object()
+            fn test_deserialize_object_empty_object() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!("{}"))
-                {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.is_empty() { return }
-                            else { panic!("deserialize_object returned a non-empty object!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!("{}"))? { assert!(fields.is_empty(), "deserialize_object returned a non-empty object!") }
+                else { return Err("deserialize_object returned JsonObject of an unexpected variant!".to_string()) }
+
+                Ok(())
             }
 
             #[test]
-            fn test_deserialize_object_single_field_without_trailing_comma()
+            fn test_deserialize_object_single_field_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!(r#"{"key":null}"#))
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!(r#"{"key":null}"#))?
                 {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() == 1
-                            {
-                                if let Some(value) = fields.get("key") && let JsonObject::Null = value { return }
-                                else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
-                            }
-                            else { panic!("deserialize_object returned JsonObject with an unexpected number of fields!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                    assert_eq!(fields.len(), 1, "deserialize_object returned JsonObject with an unexpected number of fields!");
+
+                    if let Some(value) = fields.get("key") && let JsonObject::Null = value { Ok(()) }
+                    else { Err("deserialize_object returned JsonObject with unexpected contents!".to_string()) }
                 }
+                else { Err("deserialize_object returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_object_single_field_with_trailing_comma()
+            fn test_deserialize_object_single_field_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!(r#"{"key":null,}"#))
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!(r#"{"key":null,}"#))?
                 {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() == 1
-                            {
-                                if let Some(value) = fields.get("key") && let JsonObject::Null = value { return }
-                                else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
-                            }
-                            else { panic!("deserialize_object returned JsonObject with an unexpected number of fields!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                    assert_eq!(fields.len(), 1, "deserialize_object returned JsonObject with an unexpected number of fields!");
+
+                    if let Some(value) = fields.get("key") && let JsonObject::Null = value { Ok(()) }
+                    else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
                 }
+                else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
             }
 
             #[test]
-            fn test_deserialize_object_double_field_without_trailing_comma()
+            fn test_deserialize_object_double_field_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2}"#))
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2}"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(fields.len(), 2, "deserialize_object returned JsonObject with an unexpected number of fields!");
+
+                    if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
+                        && let Some(value_second) = fields.get("second") && let JsonObject::Value  { value: value_second_value } = value_second && value_second_value == "2"
                     {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() == 2
-                            {
-                                if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
-                                    && let Some(value_second) = fields.get("second") && let JsonObject::Value  { value: value_second_value } = value_second && value_second_value == "2"
-                                {
-                                    return
-                                }
-                                else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
-                            }
-                            else { panic!("deserialize_object returned JsonObject with an unexpected number of fields!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        Ok(())
+                    }
+                    else { Err("deserialize_object returned JsonObject with unexpected contents!".to_string()) }
                 }
+                else { Err("deserialize_object returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_object_double_field_with_trailing_comma()
+            fn test_deserialize_object_double_field_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2,}"#))
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2,}"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(fields.len(), 2, "deserialize_object returned JsonObject with an unexpected number of fields!");
+
+                    if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
+                        && let Some(value_second) = fields.get("second") && let JsonObject::Value { value: value_second_value } = value_second && value_second_value == "2"
                     {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() == 2
-                            {
-                                if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
-                                    && let Some(value_second) = fields.get("second") && let JsonObject::Value { value: value_second_value } = value_second && value_second_value == "2"
-                                {
-                                    return
-                                }
-                                else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
-                            }
-                            else { panic!("deserialize_object returned JsonObject with an unexpected number of fields!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        Ok(())
+                    }
+                    else { Err("deserialize_object returned JsonObject with unexpected contents!".to_string()) }
                 }
+                else { Err("deserialize_object returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_object_triple_field_without_trailing_comma()
+            fn test_deserialize_object_triple_field_without_trailing_comma() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2,"third":3}"#))
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2,"third":3}"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(fields.len(), 3, "deserialize_object returned JsonObject with an unexpected number of fields!");
+
+                    if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
+                        && let Some(value_second) = fields.get("second") && let JsonObject::Value  { value: value_second_value } = value_second && value_second_value == "2"
+                        && let Some(value_third) = fields.get("third") && let JsonObject::Value  { value: value_third_value } = value_third && value_third_value == "3"
                     {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() == 3
-                            {
-                                if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
-                                    && let Some(value_second) = fields.get("second") && let JsonObject::Value  { value: value_second_value } = value_second && value_second_value == "2"
-                                    && let Some(value_third) = fields.get("third") && let JsonObject::Value  { value: value_third_value } = value_third && value_third_value == "3"
-                                {
-                                    return
-                                }
-                                else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
-                            }
-                            else { panic!("deserialize_object returned JsonObject with an unexpected number of fields!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        Ok(())
+                    }
+                    else { Err("deserialize_object returned JsonObject with unexpected contents!".to_string()) }
                 }
+                else { Err("deserialize_object returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_deserialize_object_triple_field_with_trailing_comma()
+            fn test_deserialize_object_triple_field_with_trailing_comma() -> Result<(), String>
             {
-                match deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2,"third":3,}"#))
+                if let JsonObject::Object { fields } = deserialize_object(static_string_to_char_slice!(r#"{"first":1,"second":2,"third":3,}"#))?
                 {
-                    Ok(json) =>
+                    assert_eq!(fields.len(), 3, "deserialize_object returned JsonObject with an unexpected number of fields!");
+
+                    if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
+                        && let Some(value_second) = fields.get("second") && let JsonObject::Value { value: value_second_value } = value_second && value_second_value == "2"
+                        && let Some(value_third) = fields.get("third") && let JsonObject::Value { value: value_third_value } = value_third && value_third_value == "3"
                     {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() == 3
-                            {
-                                if let Some(value_first) = fields.get("first") && let JsonObject::Value { value: value_first_value } = value_first && value_first_value == "1"
-                                    && let Some(value_second) = fields.get("second") && let JsonObject::Value { value: value_second_value } = value_second && value_second_value == "2"
-                                    && let Some(value_third) = fields.get("third") && let JsonObject::Value { value: value_third_value } = value_third && value_third_value == "3"
-                                {
-                                    return
-                                }
-                                else { panic!("deserialize_object returned JsonObject with unexpected contents!") }
-                            }
-                            else { panic!("deserialize_object returned JsonObject with an unexpected number of fields!") }
-                        }
-                        else { panic!("deserialize_object returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                        Ok(())
+                    }
+                    else { Err("deserialize_object returned JsonObject with unexpected contents!".to_string()) }
                 }
+                else { Err("deserialize_object returned JsonObject of an unexpected variant!".to_string()) }
             }
         }
 
@@ -1519,91 +1199,46 @@ mod test
             }
 
             #[test]
-            fn test_json_object_empty_string()
+            fn test_json_object_empty_string() -> Result<(), String>
             {
-                match string_slice_to_json_object!("")
-                {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Null = json { return }
-                        else { panic!("JsonObject::try_from(…) returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                if let JsonObject::Null = string_slice_to_json_object!("")? { Ok(()) }
+                else { return Err("JsonObject::try_from(…) returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
             fn test_json_object_one_character_string()
             {
-                match string_slice_to_json_object!("1")
-                {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if value == "1" { return }
-                            else { panic!("JsonObject::try_from(…) returned `{}` instead of `1`!", value) }
-                        }
-                        else { panic!("JsonObject::try_from(…) returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(string_slice_to_json_object!("1"), SHOULD_RETURN_STRING, "1")
             }
 
             #[test]
-            fn test_json_object_object_with_single_field()
+            fn test_json_object_object_with_single_field() -> Result<(), String>
             {
-                match string_slice_to_json_object!(r#"{"key":null}"#)
+                if let JsonObject::Object { fields } = string_slice_to_json_object!(r#"{"key":null}"#)?
                 {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Object { fields } = json
-                        {
-                            if fields.len() != 1 { panic!("JsonObject::try_from(…) returned JsonObject with an unexpected number of fields!") }
-                            else if let JsonObject::Null = fields.get("key").unwrap() { return }
-                            else { panic!("JsonObject::try_from(…) returned JsonObject with an unexpected field!") }
-                        }
-                        else { panic!("JsonObject::try_from(…) returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                    if fields.len() != 1 { Err("JsonObject::try_from(…) returned JsonObject with an unexpected number of fields!".to_string()) }
+                    else if let JsonObject::Null = fields.get("key").unwrap() { Ok(()) }
+                    else { Err(format!("JsonObject::try_from(…) returned JsonObject with an unexpected field!")) }
                 }
+                else { Err("JsonObject::try_from(…) returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
-            fn test_json_object_array_with_single_item()
+            fn test_json_object_array_with_single_item() -> Result<(), String>
             {
-                match string_slice_to_json_object!("[null]")
+                if let JsonObject::Array { array } = string_slice_to_json_object!("[null]")?
                 {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Array { array } = json
-                        {
-                            if array.len() != 1 { panic!("JsonObject::try_from(…) returned an array of an unexpected length!") }
-                            else if let JsonObject::Null = array.first().unwrap() { return }
-                            else { panic!("JsonObject::try_from(…) returned an array containing an unexpected item!") }
-                        }
-                        else { panic!("JsonObject::try_from(…) returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
+                    if array.len() != 1 { Err("JsonObject::try_from(…) returned an array of an unexpected length!".to_string()) }
+                    else if let JsonObject::Null = array.first().unwrap() { Ok(()) }
+                    else { Err("JsonObject::try_from(…) returned an array containing an unexpected item!".to_string()) }
                 }
+                else { Err("JsonObject::try_from(…) returned JsonObject of an unexpected variant!".to_string()) }
             }
 
             #[test]
             fn test_json_object_string()
             {
-                match string_slice_to_json_object!(r#""hello world!""#)
-                {
-                    Ok(json) =>
-                    {
-                        if let JsonObject::Value { value } = json
-                        {
-                            if value == "hello world!" { return }
-                            else { panic!("JsonObject::try_from(…) returned `{}` instead of `hello world!`!", value) }
-                        }
-                        else { panic!("JsonObject::try_from(…) returned JsonObject of an unexpected variant!") }
-                    },
-                    Err(reason) => panic!("{}", reason),
-                }
+                test_unreliable_function!(string_slice_to_json_object!(r#""hello world!""#), SHOULD_RETURN_STRING, "hello world!")
             }
         }
     }
